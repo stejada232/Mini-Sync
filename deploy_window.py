@@ -154,6 +154,7 @@ class Deploy(FileSystemEventHandler):
             remote_path = self.get_remote_path(new_path)
             self.create_remote_dir_r(os.path.dirname(remote_path))
             self.sftp.put(new_path, remote_path)
+            self.sftp.utime(remote_path, (local_time, local_time))
             self.log_queue.put(f"Modified: {os.path.basename(new_path)}")         
         except Exception as e:
             self.log_queue.put(f"Upload Error: {e}")
