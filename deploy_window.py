@@ -424,6 +424,43 @@ class window(FileSystemEventHandler):
         else:
             return
 
+    def polling_loop(self):
+        while self.is_deploying:
+            self.check_for_new_remote(self.current_remote_path)
+            time.sleep(10)
+    
+    def get_local_path(self, remote_path):
+
+        relative_path = os.path.relpath(remote_path, self.current_remote_path)
+
+        local_path = os.path.join(self.current_local_path, relative_path)
+
+        return local_path.replace("\\", "/")
+
+    def check_for_new_remote(self,remote_path):
+        new_rem_files = self.sftp.listdir_attr(remote_path)
+        for file in new_rem_files:
+            file_remote_path = remote_path + "/" + file.filename
+            local_path = self.get_local_path(file_remote_path)
+            print(file_remote_path)
+            if stat.S_ISDIR(file.st_mode):
+                if not os.path.exists(local_path):
+                    os.makedirs(local_path)
+                self.check_for_new_remote(file_remote_path)
+            else:
+                if not os.path.exists(local_path):
+                    self.sftp.get(file_remote_path,local_path)
+                    os.utime(local_path, (file.st_mtime, file.st_mtime))
+                else:
+                    local_time = int(os.path.getmtime(local_path))
+                    remote_time = file.st_mtime
+                    if local_time < remote_time:
+                        self.sftp.get(file_remote_path, local_path)
+                        os.utime(local_path, (file.st_mtime, file.st_mtime))
+
+                        
+
+
 
     def start_observer(self):
         if not self.sftp:
@@ -446,6 +483,7 @@ class window(FileSystemEventHandler):
         self.connect.config(state="disabled")
         self.disconnect.config(state="disabled")
         self.is_deploying = True
+        threading.Thread(target=self.polling_loop, daemon=True).start()
         self.log_queue.put(f"Watching for changes...")
         self.observer = Observer()
         self.observer.schedule(Deploy(self.sftp, self.current_local_path,self.current_remote_path,self.log_queue), self.current_local_path, recursive=True)
