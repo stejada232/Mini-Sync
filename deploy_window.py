@@ -240,7 +240,7 @@ class window(FileSystemEventHandler):
 
         # --- 5. Paths and Other Stuff---
         self.current_remote_path = "."
-        self.current_local_path = "."
+        self.current_local_path = None
         self.is_deploying = False
         self.lockables = [self.connect, self.disconnect]
         self.sftp = None
@@ -259,11 +259,18 @@ class window(FileSystemEventHandler):
         self.root.after(100, self.poll_log_queue)
     
     def start_connect(self):
+        if self.sftp:
+            self.log_queue.put("Already connected to a server.")
+            return
         self.disconnect.config(state="normal")
 
         threading.Thread(target=self._connect_thread, daemon=True).start()
     
     def _connect_thread(self):
+        if not self.ip.get() or not self.port.get() or not self.user.get() or not self.passw.get():
+            self.log_queue.put("Connection Error: All fields are required.")
+            self.root.after(0, lambda: self.connect.config(state="normal"))
+            return
         self.HOST = self.ip.get()
         self.PORT = int(self.port.get())
         self.USERNAME = self.user.get()
@@ -286,6 +293,8 @@ class window(FileSystemEventHandler):
         self.refresh_remote_files()
 
     def end_connect(self):
+        if self.is_deploying:
+            self.closing()
         if self.sftp:
             self.disconnect.config(state="disabled")
             self.sftp.close()
@@ -296,6 +305,8 @@ class window(FileSystemEventHandler):
             self.log_queue.put("Disconnected")
 
     def open_folder(self):
+        if self.is_deploying:
+            self.log_queue.put("Stop deployment before changing folders!")
         selected_directory = filedialog.askdirectory(
             initialdir="/", 
             title="Select Local Directory"
@@ -311,6 +322,8 @@ class window(FileSystemEventHandler):
         self.refresh_remote_files()
     
     def refresh_local_files(self, path):
+        if not self.current_local_path:
+            return
         try:
             path = os.path.abspath(path)
             items = os.listdir(path)
@@ -328,6 +341,8 @@ class window(FileSystemEventHandler):
 
 
     def refresh_remote_files(self):
+        if not self.current_remote_path:
+            return
         if self.sftp:
             try:
                 items = self.sftp.listdir_attr(self.current_remote_path)
@@ -344,7 +359,7 @@ class window(FileSystemEventHandler):
 
         
     def on_local_double_click(self, event):
-        if not self.local_fileviewer.curselection():
+        if not self.local_fileviewer.curselection() or self.is_deploying:
             return
         print(self.current_local_path)
         selection = self.local_fileviewer.get(self.local_fileviewer.curselection())
@@ -366,7 +381,7 @@ class window(FileSystemEventHandler):
             return
 
     def on_remote_double_click(self, event):
-        if not self.fileviewer.curselection():
+        if not self.fileviewer.curselection() or self.is_deploying:
             return
         selection = self.fileviewer.get(self.fileviewer.curselection())
         name = selection[4:]
@@ -388,6 +403,12 @@ class window(FileSystemEventHandler):
             return
 
     def start_observer(self):
+        if not self.sftp:
+            self.log_queue.put(f"Connection not established.")
+            return
+        if not self.current_local_path or not self.current_remote_path:
+            self.log_queue.put(f"Directories not chosen.")
+            return
         self.deploy_btn.config(text="Stop Deploy",command=self.closing)
         self.connect.config(state="disabled")
         self.disconnect.config(state="disabled")
@@ -409,7 +430,7 @@ class window(FileSystemEventHandler):
             self.observer = None
         
 
-        
+
         
 if __name__ == "__main__":
     root = tk.Tk()
