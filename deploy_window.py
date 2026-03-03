@@ -38,7 +38,18 @@ class Deploy(FileSystemEventHandler):
 
         return remote_path.replace("\\", "/")
 
-
+    def create_remote_dir_r(self,remote_path):
+        if remote_path=="/" or remote_path=="":
+            return
+        try:
+            self.sftp.stat(remote_path)
+        except IOError:
+            self.create_remote_dir_r(os.path.dirname(remote_path))
+            try:
+                self.sftp.mkdir(remote_path)
+                self.log_queue.put(f"Created directory: {remote_path}")
+            except:
+                pass
 
     def on_created(self, event):
 
@@ -51,8 +62,9 @@ class Deploy(FileSystemEventHandler):
             remote_path = self.get_remote_path(event.src_path)
 
             if event.is_directory:
+                self.create_remote_dir_r(os.path.dirname(remote_path))
                 self.sftp.mkdir(remote_path)
-                self.log_queue.put(f"Modified: {remote_path}")
+                self.log_queue.put(f"Created: {remote_path}")
             else:
                 self.debounce_upload(event.src_path)
         except Exception as e:
@@ -132,6 +144,7 @@ class Deploy(FileSystemEventHandler):
             del self.timers[new_path]
         try:
             remote_path = self.get_remote_path(new_path)
+            self.create_remote_dir_r(os.path.dirname(remote_path))
             self.sftp.put(new_path, remote_path)
             self.log_queue.put(f"Modified: {os.path.basename(new_path)}")         
         except Exception as e:
@@ -302,6 +315,7 @@ class window(FileSystemEventHandler):
                 self.ssh.close()
             self.sftp = None
             self.ssh = None
+            self.current_remote_path = "."
             self.log_queue.put("Disconnected")
 
     def open_folder(self):
@@ -361,7 +375,6 @@ class window(FileSystemEventHandler):
     def on_local_double_click(self, event):
         if not self.local_fileviewer.curselection() or self.is_deploying:
             return
-        print(self.current_local_path)
         selection = self.local_fileviewer.get(self.local_fileviewer.curselection())
         name = selection[4:]
         if selection.startswith("[D]"):
