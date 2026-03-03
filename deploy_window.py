@@ -157,7 +157,7 @@ class Deploy(FileSystemEventHandler):
             local_time = int(os.path.getmtime(new_path))
             try:
                 remote_time = self.sftp.stat(self.get_remote_path(new_path)).st_mtime
-                if remote_time > local_time:
+                if remote_time >= local_time:
                     self.log_queue.put(f"Sync Error: {os.path.basename(new_path)}")         
                     return
             except IOError:
