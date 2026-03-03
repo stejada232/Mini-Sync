@@ -143,6 +143,14 @@ class Deploy(FileSystemEventHandler):
         if new_path in self.timers:
             del self.timers[new_path]
         try:
+            local_time = int(os.path.getmtime(new_path))
+            try:
+                remote_time = self.sftp.stat(self.get_remote_path(new_path)).st_mtime
+                if remote_time > local_time:
+                    self.log_queue.put(f"Sync Error: {os.path.basename(new_path)}")         
+                    return
+            except IOError:
+                pass
             remote_path = self.get_remote_path(new_path)
             self.create_remote_dir_r(os.path.dirname(remote_path))
             self.sftp.put(new_path, remote_path)
@@ -428,7 +436,7 @@ class window(FileSystemEventHandler):
         except IOError:
             answer = messagebox.askyesno(title="Add Synchronization?", message="This remote directory is currently not initialized for syncing. Would you like to initialize it?")
             if answer:
-                self.sftp.open(self.current_remote_path+"/.minisync", 'w')
+                self.sftp.open(self.current_remote_path+"/.minisync", 'w').close()
                 self.log_queue.put(f"Directory initialized")
             else:
                 self.log_queue.put(f"Deployment failed")
