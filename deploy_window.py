@@ -10,10 +10,14 @@ from watchdog.events import FileSystemEventHandler
 import threading
 import queue
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class Deploy(FileSystemEventHandler):
 
-    def __init__(self, sftp, local_path, remote_path, log_queue):
+    def __init__(self, sftp, local_path, remote_path, log_queue, sftp_lock, refresh_callback):
 
         super().__init__()
 
@@ -24,6 +28,9 @@ class Deploy(FileSystemEventHandler):
         self.remote_path = remote_path
 
         self.log_queue = log_queue
+
+        self.sftp_lock = sftp_lock
+        self.refresh_callback = refresh_callback
 
         self.timers = {}
         self.debounce_time = 1.0
@@ -53,11 +60,13 @@ class Deploy(FileSystemEventHandler):
         if remote_path=="/" or remote_path=="":
             return
         try:
-            self.sftp.stat(remote_path)
+            with self.sftp_lock:
+                self.sftp.stat(remote_path)
         except IOError:
             self.create_remote_dir_r(os.path.dirname(remote_path))
             try:
-                self.sftp.mkdir(remote_path)
+                with self.sftp_lock:
+                    self.sftp.mkdir(remote_path)
                 self.log_queue.put(f"Created directory: {remote_path}")
             except:
                 pass
@@ -74,8 +83,12 @@ class Deploy(FileSystemEventHandler):
 
             if event.is_directory:
                 self.create_remote_dir_r(os.path.dirname(remote_path))
-                self.sftp.mkdir(remote_path)
+                with self.sftp_lock:
+                    self.sftp.mkdir(remote_path)
+                    
                 self.log_queue.put(f"Created: {remote_path}")
+                
+                self.refresh_callback()
             else:
                 self.debounce_upload(event.src_path)
         except Exception as e:
@@ -97,18 +110,20 @@ class Deploy(FileSystemEventHandler):
     def on_moved(self, event):
 
         """Handles renaming files and folders to prevent duplicates."""
-
+        if self.is_ignored(event.src_path) or self.is_ignored(event.dest_path):
+            return
         try:
 
             old_remote = self.get_remote_path(event.src_path)
 
             new_remote = self.get_remote_path(event.dest_path)
 
-           
-
-            self.sftp.rename(old_remote, new_remote)
+            with self.sftp_lock:
+                self.sftp.rename(old_remote, new_remote)
 
             self.log_queue.put(f"Renamed: {os.path.basename(event.src_path)} -> {os.path.basename(event.dest_path)}")
+            
+            self.refresh_callback()
 
         except Exception as e:
 
@@ -119,24 +134,21 @@ class Deploy(FileSystemEventHandler):
     def on_deleted(self, event):
 
         """Handles deleting files and folders on the remote server."""
-
+        if self.is_ignored(event.src_path):
+            return
         try:
 
             remote_path = self.get_remote_path(event.src_path)
 
-           
-
-            if event.is_directory:
-
-                self.sftp.rmdir(remote_path)
-
-                self.log_queue.put(f"Deleted Folder: {remote_path}")
-
-            else:
-
-                self.sftp.remove(remote_path)
-
-                self.log_queue.put(f"Deleted File: {remote_path}")
+            with self.sftp_lock:
+                if event.is_directory:
+                    self.sftp.rmdir(remote_path)
+                    self.log_queue.put(f"Deleted Folder: {remote_path}")
+                else:
+                    self.sftp.remove(remote_path)
+                    self.log_queue.put(f"Deleted File: {remote_path}")
+            
+            self.refresh_callback()
 
         except Exception as e:
 
@@ -164,9 +176,12 @@ class Deploy(FileSystemEventHandler):
                 pass
             remote_path = self.get_remote_path(new_path)
             self.create_remote_dir_r(os.path.dirname(remote_path))
-            self.sftp.put(new_path, remote_path)
-            self.sftp.utime(remote_path, (local_time, local_time))
-            self.log_queue.put(f"Modified: {os.path.basename(new_path)}")         
+            with self.sftp_lock:
+                self.sftp.put(new_path, remote_path)
+                self.sftp.utime(remote_path, (local_time, local_time))
+
+            self.log_queue.put(f"Modified: {os.path.basename(new_path)}") 
+            self.refresh_callback()        
         except Exception as e:
             self.log_queue.put(f"Upload Error: {e}")
 
@@ -277,6 +292,7 @@ class window(FileSystemEventHandler):
         self.is_deploying = False
         self.lockables = [self.connect, self.disconnect]
         self.sftp = None
+        self.sftp_lock = threading.Lock()
 
         # --- 6. Log Queue---
         self.log_queue = queue.Queue()
@@ -392,7 +408,8 @@ class window(FileSystemEventHandler):
             return
         if self.sftp:
             try:
-                items = self.sftp.listdir_attr(self.current_remote_path)
+                with self.sftp_lock:
+                    items = self.sftp.listdir_attr(self.current_remote_path)
                 self.fileviewer.delete(0,tk.END)
                 if self.current_remote_path != ".":
                     self.fileviewer.insert(tk.END, "    ../")
@@ -508,17 +525,22 @@ class window(FileSystemEventHandler):
         self.deploy_btn.config(text="Stop Deploy",command=self.closing)
         self.connect.config(state="disabled")
         self.disconnect.config(state="disabled")
+        self.local_action_btn.config(state="disabled")
+        self.remote_action_btn.config(state="disabled")
         self.is_deploying = True
         threading.Thread(target=self.polling_loop, daemon=True).start()
         self.log_queue.put(f"Watching for changes...")
+        safe_refresh = lambda: self.root.after(0, self.refresh_files)
         self.observer = Observer()
-        self.observer.schedule(Deploy(self.sftp, self.current_local_path,self.current_remote_path,self.log_queue), self.current_local_path, recursive=True)
+        self.observer.schedule(Deploy(self.sftp, self.current_local_path,self.current_remote_path,self.log_queue, self.sftp_lock, safe_refresh), self.current_local_path, recursive=True)
         self.observer.start()
 
     def closing(self):
         if self.observer or self.is_deploying:
             self.connect.config(state="normal")
             self.disconnect.config(state="normal")
+            self.local_action_btn.config(state="normal")
+            self.remote_action_btn.config(state="normal")
             self.observer.stop()
             self.observer.join()
             self.deploy_btn.config(text = "Auto Deploy",command = self.start_observer)
@@ -526,10 +548,26 @@ class window(FileSystemEventHandler):
             self.is_deploying = False
             self.observer = None
         
-
-
-        
 if __name__ == "__main__":
     root = tk.Tk()
     my_app = window(root)
+    # ==========================================
+    # --- SAFE DEBUG DEFAULTS ---
+    # ==========================================
+    
+    # Safely pull credentials from the local .env file. 
+    # The second argument (e.g., "") is a fallback just in case the .env file is missing.
+    my_app.ip.insert(0, os.getenv("TEST_IP", "127.0.0.1"))
+    my_app.port.insert(0, os.getenv("TEST_PORT", "22"))
+    my_app.user.insert(0, os.getenv("TEST_USER", ""))
+    my_app.passw.insert(0, os.getenv("TEST_PASS", "")) 
+
+    my_app.current_local_path = os.getenv("TEST_LOCAL_PATH", ".")
+    my_app.current_remote_path = os.getenv("TEST_REMOTE_PATH", ".")
+
+    # Force the left-side listbox to load the local path immediately
+    if my_app.current_local_path != ".":
+        my_app.refresh_local_files(my_app.current_local_path)
+    
+    # ==========================================
     root.mainloop()
