@@ -166,10 +166,12 @@ class Deploy(FileSystemEventHandler):
         if new_path in self.timers:
             del self.timers[new_path]
         try:
+            local_time = int(os.path.getmtime(new_path))
             remote_path = self.get_remote_path(new_path)
             self.create_remote_dir_r(os.path.dirname(remote_path))
             with self.sftp_lock:
                 self.sftp.put(new_path, remote_path)
+                self.sftp.utime(remote_path, (local_time, local_time))
             self.log_queue.put(f"Modified: {os.path.basename(new_path)}") 
             self.refresh_callback()        
         except Exception as e:
@@ -508,7 +510,9 @@ class window(FileSystemEventHandler):
     
     def search_remove_remote(self,remote_path):
         try: 
-            for item in self.sftp.listdir_attr(remote_path):
+            with self.sftp_lock:
+                remote_items = self.sftp.listdir_attr(remote_path)
+            for item in remote_items:
                 if self.is_ignored(item.filename):
                     continue
                 remote_item_path = os.path.join(remote_path, item.filename).replace("\\", "/")
@@ -517,10 +521,12 @@ class window(FileSystemEventHandler):
                 if stat.S_ISDIR(item.st_mode):
                     self.search_remove_remote(remote_item_path)
                     if not os.path.exists(local_item_path):
-                        self.sftp.rmdir(remote_item_path)
+                        with self.sftp_lock:
+                            self.sftp.rmdir(remote_item_path)
                 else:
                     if not os.path.exists(local_item_path):
-                        self.sftp.remove(remote_item_path)
+                        with self.sftp_lock:
+                            self.sftp.remove(remote_item_path)
         except Exception as e:
             self.log_queue.put(f"Initial Cleanup Error: {e}")
 
