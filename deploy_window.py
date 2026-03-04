@@ -540,6 +540,16 @@ class window(FileSystemEventHandler):
         if not self.current_local_path or not self.current_remote_path:
             self.log_queue.put(f"Directories not chosen.")
             return
+        try:
+            self.sftp.stat(self.current_remote_path+"/.minisync")
+        except IOError:
+            answer = messagebox.askyesno(title="Add Synchronization?", message="This remote directory is currently not initialized for syncing. Would you like to initialize it?")
+            if answer:
+                self.sftp.open(self.current_remote_path+"/.minisync", 'w').close()
+                self.log_queue.put(f"Directory initialized")
+            else:
+                self.log_queue.put(f"Deployment failed")
+                return
         self.deploy_btn.config(text="Stop Deploy",command=self.closing)
         self.connect.config(state="disabled")
         self.disconnect.config(state="disabled")
