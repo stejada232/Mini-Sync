@@ -10,6 +10,10 @@ from watchdog.events import FileSystemEventHandler
 import threading
 import queue
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class Deploy(FileSystemEventHandler):
 
@@ -537,4 +541,23 @@ class window(FileSystemEventHandler):
 if __name__ == "__main__":
     root = tk.Tk()
     my_app = window(root)
+    # ==========================================
+    # --- SAFE DEBUG DEFAULTS ---
+    # ==========================================
+    
+    # Safely pull credentials from the local .env file. 
+    # The second argument (e.g., "") is a fallback just in case the .env file is missing.
+    my_app.ip.insert(0, os.getenv("TEST_IP", "127.0.0.1"))
+    my_app.port.insert(0, os.getenv("TEST_PORT", "22"))
+    my_app.user.insert(0, os.getenv("TEST_USER", ""))
+    my_app.passw.insert(0, os.getenv("TEST_PASS", "")) 
+
+    my_app.current_local_path = os.getenv("TEST_LOCAL_PATH", ".")
+    my_app.current_remote_path = os.getenv("TEST_REMOTE_PATH", ".")
+
+    # Force the left-side listbox to load the local path immediately
+    if my_app.current_local_path != ".":
+        my_app.refresh_local_files(my_app.current_local_path)
+    
+    # ==========================================
     root.mainloop()
