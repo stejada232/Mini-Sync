@@ -524,7 +524,7 @@ class window():
                 key=lambda x: x.filename
             )
         except IOError:
-            remote_files = [] # Directory doesn't exist remotely yet
+            remote_files = [] 
         l = 0
         r = 0
 
@@ -552,8 +552,7 @@ class window():
 
             elif l_file and (r_file is None or l_file.name < r_file.filename):
                 if l_file.is_dir():
-                    if not self.sftp_exists(l_remote_path):
-                        self.sftp.mkdir(l_remote_path)
+                    self.sftp.mkdir(l_remote_path)
                     self.sync_local_to_remote(l_file.path)
                 else:
                     self.sftp.put(file_local_path, l_remote_path)
@@ -592,12 +591,10 @@ class window():
                 local_time = l_file.stat().st_mtime
                 l_local_path = l_file.path
 
-            # CASE 1: Match - Item exists on both sides
             if l_file and r_file and l_file.name == r_file.filename:
                 if stat.S_ISDIR(r_file.st_mode):
                     self.sync_remote_to_local(file_remote_path)
                 else:
-                    # Sync if remote is newer
                     if local_time < remote_time:
                         with self.sftp_lock:
                             self.sftp.get(file_remote_path, r_local_path)
@@ -605,7 +602,6 @@ class window():
                 l += 1
                 r += 1
 
-            # CASE 2: Remote-only - Item exists on server but not locally
             elif r_file and (l_file is None or r_file.filename < l_file.name):
                 if stat.S_ISDIR(r_file.st_mode):
                     if not os.path.exists(r_local_path):
@@ -617,7 +613,6 @@ class window():
                     os.utime(r_local_path, (remote_time, remote_time))
                 r += 1
 
-            # CASE 3: Local-only - Item exists locally but not on server (Delete to match remote)
             elif l_file and (r_file is None or l_file.name < r_file.filename):
                 if l_file.is_dir():
                     import shutil
