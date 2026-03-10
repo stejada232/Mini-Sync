@@ -18,24 +18,24 @@ To run this application, you will need **Python 3.x** installed on your system a
 
 You can install the required dependencies using your terminal:
 
-    pip install paramiko watchdog python-dotenv
+    pip install paramiko watchdog
 
 *(Note: `tkinter` is included in the standard Python library, but on some Linux distributions, you may need to install it separately via your package manager, e.g., `sudo apt-get install python3-tk`).*
 
 ## 🚀 Usage
 
-1. **(Optional) Setup Defaults:** Create a `.env` file in the root directory using `.env.example` as a template to pre-fill your test IP, Port, Username, and Paths.
-2. Run the script from your terminal:
+
+1. Run the script from your terminal:
     
     python deploy_window.py
 
-3. **Connect to Server:** Verify or enter your server's IP, Port, Username, and Password in the top header, then click **Connect**.
-4. **Select Local Path:** Click **Open Folder** on the left panel to choose the local directory you want to work from. Double-click folders to navigate.
-5. **Select Remote Path:** Use the right panel to navigate to your target deployment folder on the server.
-6. **Start Syncing:** * Click **Deploy Local → Remote** to watch your local folder and push changes to the server.
+2. **Connect to Server:** Verify or enter your server's IP, Port, Username, and Password in the top header, then click **Connect**.
+3. **Select Local Path:** Click **Open Folder** on the left panel to choose the local directory you want to work from. Double-click folders to navigate.
+4. **Select Remote Path:** Use the right panel to navigate to your target deployment folder on the server.
+5. **Start Syncing:** * Click **Deploy Local → Remote** to watch your local folder and push changes to the server.
     * Click **Deploy Remote → Local** to poll the server and pull changes to your local machine.
     * Use the **Sync** buttons for an immediate, one-time directory overwrite.
-7. Click **Stop Deploy** before disconnecting or closing the application.
+6. Click **Stop Deploy** before disconnecting or closing the application.
 
 ## ⚠️ Important Considerations & Limitations
 
