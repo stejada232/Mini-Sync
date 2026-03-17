@@ -39,7 +39,7 @@ You can install the required dependencies using your terminal:
 
 ## ⚠️ Important Considerations & Limitations
 
-Mini Deploy is designed as a direct deployment pipeline. While it checks file timestamps to prevent redundant uploads, please be aware of the following:
+Mini Sync is designed as a direct deployment pipeline. While it checks file timestamps to prevent redundant uploads, please be aware of the following:
 
 * **Destructive Synchronization:** Syncing is destructive. If you delete a file on the source side, it will be deleted on the target side during a sync. Please ensure you have backups of your server data before initiating a sync.
 * **No Workspace Verification:** The app will allow you to deploy any local folder into any remote folder. It does not check if the remote folder is already being used for something else. Always double-check your paths before starting a deployment.
